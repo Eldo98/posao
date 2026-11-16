@@ -1,0 +1,2074 @@
+<!DOCTYPE html>
+<html lang="bs" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Discord Zajednica & Admin Panel</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts: Inter & JetBrains Mono -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'monospace'],
+                    },
+                    colors: {
+                        discord: {
+                            bg: '#313338',
+                            sidebar: '#2b2d31',
+                            darkest: '#1e1f22',
+                            hover: '#35373c',
+                            active: '#404249',
+                            blurple: '#5865F2',
+                            blurpleHover: '#4752C4',
+                            green: '#23a55a',
+                            yellow: '#f0b232',
+                            red: '#da373c',
+                            text: '#dbdee1',
+                            muted: '#949ba4',
+                            channel: '#80848e'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #2b2d31; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb { background: #1a1b1e; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #111214; }
+
+        body {
+            background-color: #1e1f22;
+            color: #dbdee1;
+            overflow-x: hidden;
+        }
+
+        .discord-shadow { box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35); }
+
+        .mention-pill {
+            background-color: rgba(88, 101, 242, 0.3);
+            color: #c9cdfb;
+            padding: 1px 5px;
+            border-radius: 4px;
+            font-weight: 500;
+        }
+
+        @keyframes pulseGlow {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
+        }
+        .live-dot { animation: pulseGlow 2s infinite; }
+
+        @keyframes slideInRight {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        .toast-enter { animation: slideInRight 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+    </style>
+</head>
+<body class="antialiased selection:bg-discord-blurple selection:text-white">
+
+    <!-- TOAST NOTIFICATIONS -->
+    <div id="toast-container" class="fixed bottom-5 right-5 z-50 flex flex-col gap-2.5 max-w-sm w-full pointer-events-none"></div>
+
+    <!-- ===================================================================== -->
+    <!-- AUTHENTICATION SCREEN (REAL DISCORD OAUTH2 + ADMIN LOGIN)             -->
+    <!-- ===================================================================== -->
+    <div id="auth-screen" class="min-h-screen flex items-center justify-center p-4 relative overflow-hidden bg-[#1e1f22]">
+        <div class="absolute -top-32 -left-32 w-96 h-96 bg-discord-blurple/20 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute -bottom-32 -right-32 w-96 h-96 bg-discord-green/10 rounded-full blur-3xl pointer-events-none"></div>
+
+        <div class="w-full max-w-4xl grid grid-cols-1 lg:grid-cols-5 bg-discord-bg rounded-2xl discord-shadow border border-white/5 overflow-hidden z-10">
+            
+            <!-- Left Side: Login Forms -->
+            <div class="lg:col-span-3 p-6 sm:p-10 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center gap-3 mb-6">
+                        <div class="w-11 h-11 rounded-2xl bg-discord-blurple flex items-center justify-center text-white text-xl shadow-lg shadow-discord-blurple/30">
+                            <i class="fa-brands fa-discord"></i>
+                        </div>
+                        <div>
+                            <h1 id="auth-server-title" class="text-xl font-bold text-white tracking-tight">Discord Zajednica Portal</h1>
+                            <p class="text-xs text-discord-muted">Povezivanje stvarnih Discord profila & Admin kontrola</p>
+                        </div>
+                    </div>
+
+                    <!-- Real Discord OAuth2 Member Login -->
+                    <div class="mb-6">
+                        <button onclick="initiateRealDiscordOAuth()" class="w-full py-3.5 px-4 bg-discord-blurple hover:bg-discord-blurpleHover active:scale-[0.99] text-white font-semibold rounded-xl transition flex items-center justify-center gap-3 shadow-lg shadow-discord-blurple/25">
+                            <i class="fa-brands fa-discord text-xl"></i>
+                            <span>Prijavi se putem Discorda</span>
+                        </button>
+                        <p id="oauth-status-hint" class="text-[11px] text-discord-muted text-center mt-2">
+                            Autentifikacija putem službenog Discord OAuth2 API-ja
+                        </p>
+
+                        <!-- Setup Notice if Client ID is not configured yet -->
+                        <div id="oauth-not-configured-alert" class="hidden mt-3 p-3.5 rounded-xl bg-discord-yellow/10 border border-discord-yellow/30 text-xs text-discord-text space-y-2">
+                            <p class="font-bold text-discord-yellow flex items-center gap-1.5">
+                                <i class="fa-solid fa-triangle-exclamation"></i> Discord OAuth2 Client ID nije podešen
+                            </p>
+                            <p class="text-discord-muted leading-relaxed">
+                                Da bi se članovi mogli povezati sa svojim pravim Discord profilima, Admin mora unijeti <strong>Client ID</strong> iz Discord Developer Portala u sekciji <em>Discord API Konfiguracija</em>.
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- Divider -->
+                    <div class="relative flex py-3 items-center mb-5">
+                        <div class="flex-grow border-t border-white/10"></div>
+                        <span class="flex-shrink mx-3 text-xs uppercase tracking-wider text-discord-muted font-semibold">Admin Prijava</span>
+                        <div class="flex-grow border-t border-white/10"></div>
+                    </div>
+
+                    <!-- Admin Direct Login Form -->
+                    <form id="admin-login-form" onsubmit="handleAdminLogin(event)" class="space-y-4">
+                        <div>
+                            <label class="block text-xs font-bold uppercase tracking-wider text-discord-muted mb-1.5">
+                                Korisničko Ime <span class="text-discord-red">*</span>
+                            </label>
+                            <div class="relative">
+                                <span class="absolute inset-y-0 left-0 pl-3.5 flex items-center text-discord-muted">
+                                    <i class="fa-solid fa-user-shield"></i>
+                                </span>
+                                <input type="text" id="login-username" required placeholder="Unesite korisničko ime..."
+                                    class="w-full pl-10 pr-4 py-2.5 bg-discord-darkest border border-white/10 rounded-xl text-white placeholder-discord-muted/60 focus:outline-none focus:border-discord-blurple transition">
+                            </div>
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-bold uppercase tracking-wider text-discord-muted mb-1.5">
+                                Lozinka <span class="text-discord-red">*</span>
+                            </label>
+                            <div class="relative">
+                                <span class="absolute inset-y-0 left-0 pl-3.5 flex items-center text-discord-muted">
+                                    <i class="fa-solid fa-lock"></i>
+                                </span>
+                                <input type="password" id="login-password" required placeholder="••••••••"
+                                    class="w-full pl-10 pr-10 py-2.5 bg-discord-darkest border border-white/10 rounded-xl text-white placeholder-discord-muted/60 focus:outline-none focus:border-discord-blurple transition">
+                                <button type="button" onclick="togglePasswordVisibility()" class="absolute inset-y-0 right-0 pr-3.5 flex items-center text-discord-muted hover:text-white">
+                                    <i id="pwd-eye-icon" class="fa-solid fa-eye"></i>
+                                </button>
+                            </div>
+                        </div>
+
+                        <div id="login-error" class="hidden text-xs text-discord-red bg-discord-red/10 border border-discord-red/30 rounded-lg p-2.5 flex items-center gap-2">
+                            <i class="fa-solid fa-circle-exclamation"></i>
+                            <span>Neispravno korisničko ime ili lozinka.</span>
+                        </div>
+
+                        <button type="submit" class="w-full py-3 px-4 bg-[#2b2d31] hover:bg-[#35373c] border border-white/10 text-white font-semibold rounded-xl transition flex items-center justify-center gap-2">
+                            <i class="fa-solid fa-right-to-bracket text-discord-green"></i>
+                            <span>Pristupi Admin Panelu</span>
+                        </button>
+                    </form>
+                </div>
+
+                <div class="mt-6 pt-4 border-t border-white/5 flex items-center justify-between text-xs text-discord-muted">
+                    <span class="flex items-center gap-1.5">
+                        <span id="auth-api-dot" class="w-2 h-2 rounded-full bg-discord-muted"></span>
+                        <span id="auth-api-text">Discord API: Čeka konfiguraciju</span>
+                    </span>
+                    <span>OAuth2 & Webhook</span>
+                </div>
+            </div>
+
+            <!-- Right Side: Real Server Stats Card -->
+            <div class="lg:col-span-2 bg-discord-sidebar p-6 sm:p-8 flex flex-col justify-between border-t lg:border-t-0 lg:border-l border-white/5">
+                <div>
+                    <div class="relative rounded-xl overflow-hidden mb-5 border border-white/10 bg-gradient-to-br from-discord-blurple via-indigo-600 to-slate-900 p-5 text-white">
+                        <div class="flex items-center justify-between mb-3">
+                            <span class="px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-black/30 rounded-full">
+                                <i class="fa-solid fa-plug-circle-check mr-1"></i> Live Sinhronizacija
+                            </span>
+                            <span id="auth-server-id-badge" class="text-xs font-mono bg-black/25 px-2 py-0.5 rounded">Bez Server ID-a</span>
+                        </div>
+                        <h2 id="auth-card-guild-name" class="text-lg font-extrabold">Discord Server Portal</h2>
+                        <p class="text-xs text-white/80 mt-1">Prikaz isključivo stvarnih članova povezanih putem Discord naloga.</p>
+                    </div>
+
+                    <div class="space-y-3">
+                        <div class="bg-discord-darkest/70 p-3 rounded-xl border border-white/5 flex items-center justify-between">
+                            <div class="flex items-center gap-2.5">
+                                <span class="w-2.5 h-2.5 rounded-full bg-discord-green"></span>
+                                <span class="text-sm text-discord-text">Online na Discordu</span>
+                            </div>
+                            <span class="font-bold text-white font-mono" id="login-online-count">0</span>
+                        </div>
+
+                        <div class="bg-discord-darkest/70 p-3 rounded-xl border border-white/5 flex items-center justify-between">
+                            <div class="flex items-center gap-2.5">
+                                <span class="w-2.5 h-2.5 rounded-full bg-discord-blurple"></span>
+                                <span class="text-sm text-discord-text">Povezanih profila</span>
+                            </div>
+                            <span class="font-bold text-white font-mono" id="login-connected-count">0</span>
+                        </div>
+                    </div>
+
+                    <div class="mt-6">
+                        <h3 class="text-xs font-bold uppercase tracking-wider text-discord-muted mb-2.5">Kako funkcioniše?</h3>
+                        <ul class="space-y-2 text-xs text-discord-text">
+                            <li class="flex items-start gap-2"><i class="fa-solid fa-1 text-discord-blurple mt-0.5 w-4"></i> Članovi se prijavljuju svojim pravim Discord računom (OAuth2).</li>
+                            <li class="flex items-start gap-2"><i class="fa-solid fa-2 text-discord-green mt-0.5 w-4"></i> Sistem preuzima njihov pravi avatar, @korisničko_ime i ID.</li>
+                            <li class="flex items-start gap-2"><i class="fa-solid fa-3 text-discord-yellow mt-0.5 w-4"></i> Admin šalje obavještenja i pozdrave direktno na Discord kanal.</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="mt-6 bg-discord-darkest/60 border border-white/5 rounded-xl p-3 text-[11px] text-discord-muted">
+                    <i class="fa-solid fa-shield-halved text-discord-blurple mr-1"></i>
+                    Svi podaci su stvarni. Sistem ne koristi lažne korisnike niti simulirane brojače.
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===================================================================== -->
+    <!-- MAIN APPLICATION SHELL                                                -->
+    <!-- ===================================================================== -->
+    <div id="app-shell" class="hidden min-h-screen flex flex-col lg:flex-row">
+
+        <!-- MOBILE TOP BAR -->
+        <header class="lg:hidden bg-discord-darkest border-b border-white/5 px-4 py-3 flex items-center justify-between sticky top-0 z-30">
+            <div class="flex items-center gap-2.5">
+                <button onclick="toggleMobileSidebar()" class="p-2 rounded-lg bg-discord-sidebar text-white">
+                    <i class="fa-solid fa-bars"></i>
+                </button>
+                <span class="font-bold text-white flex items-center gap-2 text-sm">
+                    <i class="fa-brands fa-discord text-discord-blurple"></i> <span id="mobile-guild-name">Discord Portal</span>
+                </span>
+            </div>
+            <div class="flex items-center gap-2">
+                <span id="mobile-role-badge" class="text-[11px] font-bold px-2.5 py-1 rounded-full bg-discord-blurple/20 text-discord-blurple">ADMIN</span>
+                <button onclick="logout()" class="p-2 rounded-lg bg-discord-red/20 text-discord-red">
+                    <i class="fa-solid fa-right-from-bracket"></i>
+                </button>
+            </div>
+        </header>
+
+        <!-- LEFT NAVIGATION SIDEBAR -->
+        <aside id="sidebar" class="fixed inset-y-0 left-0 z-40 w-72 bg-discord-sidebar border-r border-white/5 flex flex-col justify-between transform -translate-x-full lg:translate-x-0 lg:static transition-transform duration-200 ease-in-out">
+            <div>
+                <!-- Server Header -->
+                <div class="p-4 border-b border-white/5 bg-discord-darkest/50 flex items-center justify-between">
+                    <div class="flex items-center gap-3 min-w-0">
+                        <div class="w-10 h-10 rounded-xl bg-discord-blurple flex items-center justify-center text-white text-lg font-bold shadow-md flex-shrink-0">
+                            <i class="fa-brands fa-discord"></i>
+                        </div>
+                        <div class="min-w-0">
+                            <h2 id="sidebar-guild-name" class="font-bold text-white text-sm truncate">Discord Zajednica</h2>
+                            <div class="flex items-center gap-1.5 text-[11px] mt-0.5">
+                                <span id="sidebar-status-dot" class="w-2 h-2 rounded-full bg-discord-yellow"></span>
+                                <span id="sidebar-webhook-status" class="text-discord-muted truncate">Webhook nije povezan</span>
+                            </div>
+                        </div>
+                    </div>
+                    <button onclick="toggleMobileSidebar()" class="lg:hidden text-discord-muted hover:text-white">
+                        <i class="fa-solid fa-xmark text-lg"></i>
+                    </button>
+                </div>
+
+                <!-- Navigation Menu -->
+                <div class="p-3 space-y-1 overflow-y-auto max-h-[calc(100vh-170px)]">
+                    <p class="px-3 pt-2 pb-1 text-[11px] font-bold uppercase tracking-wider text-discord-muted">Zajednica</p>
+                    
+                    <button onclick="switchTab('dashboard')" data-tab="dashboard" class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium bg-discord-active text-white transition">
+                        <i class="fa-solid fa-chart-pie w-5 text-center text-discord-blurple"></i>
+                        <span>Pregled & Live Podaci</span>
+                    </button>
+
+                    <button onclick="switchTab('announcements')" data-tab="announcements" class="nav-btn admin-only w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-medium text-discord-muted hover:bg-discord-hover hover:text-white transition">
+                        <div class="flex items-center gap-3">
+                            <i class="fa-solid fa-bullhorn w-5 text-center text-discord-yellow"></i>
+                            <span>Obavještenja</span>
+                        </div>
+                        <span class="text-[10px] bg-discord-blurple text-white px-1.5 py-0.5 rounded font-bold">WEBHOOK</span>
+                    </button>
+
+                    <button onclick="switchTab('greetings')" data-tab="greetings" class="nav-btn w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-medium text-discord-muted hover:bg-discord-hover hover:text-white transition">
+                        <div class="flex items-center gap-3">
+                            <i class="fa-solid fa-hand-sparkles w-5 text-center text-discord-green"></i>
+                            <span>Pozdravi & Dobrodošlica</span>
+                        </div>
+                        <span id="new-members-badge" class="hidden text-[10px] bg-discord-green/20 text-discord-green px-1.5 py-0.5 rounded-full font-bold">0</span>
+                    </button>
+
+                    <button onclick="switchTab('members')" data-tab="members" class="nav-btn w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-medium text-discord-muted hover:bg-discord-hover hover:text-white transition">
+                        <div class="flex items-center gap-3">
+                            <i class="fa-solid fa-users w-5 text-center text-cyan-400"></i>
+                            <span>Povezani Članovi</span>
+                        </div>
+                        <span id="sidebar-members-count" class="text-[11px] font-mono text-discord-muted">0</span>
+                    </button>
+
+                    <button onclick="switchTab('polls')" data-tab="polls" class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-discord-muted hover:bg-discord-hover hover:text-white transition">
+                        <i class="fa-solid fa-square-poll-vertical w-5 text-center text-purple-400"></i>
+                        <span>Ankete & Glasanje</span>
+                    </button>
+
+                    <p class="px-3 pt-4 pb-1 text-[11px] font-bold uppercase tracking-wider text-discord-muted admin-only">Sistem & API</p>
+
+                    <button onclick="switchTab('settings')" data-tab="settings" class="nav-btn admin-only w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-discord-muted hover:bg-discord-hover hover:text-white transition">
+                        <i class="fa-solid fa-sliders w-5 text-center text-emerald-400"></i>
+                        <span>Discord API & Webhook</span>
+                    </button>
+
+                    <button onclick="switchTab('audit')" data-tab="audit" class="nav-btn admin-only w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-discord-muted hover:bg-discord-hover hover:text-white transition">
+                        <i class="fa-solid fa-clipboard-list w-5 text-center text-amber-400"></i>
+                        <span>Zapisnik Radnji (Audit)</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- User Profile Footer -->
+            <div class="p-3 bg-discord-darkest border-t border-white/5">
+                <div class="flex items-center justify-between gap-2 p-2 rounded-xl bg-discord-sidebar/70">
+                    <div class="flex items-center gap-2.5 min-w-0">
+                        <div class="relative flex-shrink-0">
+                            <img id="user-avatar-img" src="" alt="" class="hidden w-9 h-9 rounded-full object-cover">
+                            <div id="user-avatar-fallback" class="w-9 h-9 rounded-full bg-discord-blurple flex items-center justify-center text-white font-bold text-sm">
+                                EL
+                            </div>
+                            <span class="absolute bottom-0 right-0 w-3 h-3 rounded-full bg-discord-green border-2 border-discord-darkest"></span>
+                        </div>
+                        <div class="min-w-0">
+                            <p id="user-display-name" class="text-sm font-bold text-white truncate">Eldo</p>
+                            <p id="user-role-label" class="text-[11px] text-discord-blurple font-semibold truncate">Glavni Admin</p>
+                        </div>
+                    </div>
+                    <button onclick="logout()" title="Odjavi se" class="p-2 rounded-lg text-discord-muted hover:text-discord-red hover:bg-discord-red/10 transition">
+                        <i class="fa-solid fa-right-from-bracket"></i>
+                    </button>
+                </div>
+            </div>
+        </aside>
+
+        <!-- ================================================================= -->
+        <!-- CENTER WORKSPACE + RIGHT SENT DISCORD LOGS                        -->
+        <!-- ================================================================= -->
+        <div class="flex-1 flex flex-col xl:flex-row min-w-0 bg-discord-bg">
+            
+            <!-- MAIN CONTENT -->
+            <main class="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto max-h-screen">
+                
+                <!-- Member Banner -->
+                <div id="member-view-banner" class="hidden mb-6 bg-discord-blurple/15 border border-discord-blurple/30 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                    <div class="flex items-center gap-3">
+                        <i class="fa-brands fa-discord text-2xl text-discord-blurple"></i>
+                        <div>
+                            <h4 class="text-sm font-bold text-white">Vaš Discord profil je uspješno povezan!</h4>
+                            <p id="member-discord-id-banner" class="text-xs text-discord-muted font-mono">Discord ID: -</p>
+                        </div>
+                    </div>
+                    <button onclick="logout()" class="px-3.5 py-2 rounded-xl bg-discord-darkest hover:bg-discord-hover text-white text-xs font-semibold">
+                        Odjavi se
+                    </button>
+                </div>
+
+                <!-- ========================================================= -->
+                <!-- TAB 1: DASHBOARD (REAL DATA ONLY)                         -->
+                <!-- ========================================================= -->
+                <section id="tab-dashboard" class="tab-content space-y-6">
+                    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                        <div>
+                            <h1 class="text-2xl font-extrabold text-white tracking-tight">Dobrodošli, <span id="welcome-hero-name" class="text-discord-blurple">Eldo</span></h1>
+                            <p class="text-sm text-discord-muted mt-0.5">Pregled stvarnih podataka sa vašeg Discord servera i povezanih profila.</p>
+                        </div>
+                        <div class="flex flex-wrap items-center gap-2">
+                            <button onclick="fetchDiscordWidgetStats(true)" class="px-3.5 py-2 rounded-xl bg-discord-sidebar hover:bg-discord-hover text-white border border-white/10 text-xs font-semibold transition flex items-center gap-2">
+                                <i class="fa-solid fa-rotate"></i> Osvježi Discord Widget
+                            </button>
+                            <button onclick="switchTab('settings')" class="admin-only px-3.5 py-2 rounded-xl bg-discord-blurple hover:bg-discord-blurpleHover text-white text-xs font-semibold transition flex items-center gap-2">
+                                <i class="fa-solid fa-plug"></i> Podesi Discord API
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Setup Checklist Banner (Shown when OAuth2 or Webhook is not configured yet) -->
+                    <div id="setup-guide-card" class="admin-only bg-discord-sidebar p-5 rounded-2xl border border-discord-blurple/30 space-y-3">
+                        <div class="flex items-center justify-between">
+                            <h3 class="font-bold text-white text-sm flex items-center gap-2">
+                                <i class="fa-solid fa-rocket text-discord-blurple"></i> Povezivanje sa vašim pravim Discord serverom
+                            </h3>
+                            <button onclick="switchTab('settings')" class="text-xs text-discord-blurple hover:underline font-semibold">Otvori postavke →</button>
+                        </div>
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+                            <div class="bg-discord-darkest p-3 rounded-xl border border-white/5 flex items-center justify-between">
+                                <span>1. Discord OAuth2 Client ID</span>
+                                <span id="check-oauth-status" class="font-bold text-discord-yellow">Nije uneseno</span>
+                            </div>
+                            <div class="bg-discord-darkest p-3 rounded-xl border border-white/5 flex items-center justify-between">
+                                <span>2. Discord Webhook URL</span>
+                                <span id="check-webhook-status" class="font-bold text-discord-yellow">Nije uneseno</span>
+                            </div>
+                            <div class="bg-discord-darkest p-3 rounded-xl border border-white/5 flex items-center justify-between">
+                                <span>3. Discord Server ID (Widget)</span>
+                                <span id="check-widget-status" class="font-bold text-discord-muted">Opcionalno</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Real KPI Cards (Start at 0) -->
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                        <div class="bg-discord-sidebar p-5 rounded-2xl border border-white/5">
+                            <div class="flex items-center justify-between mb-3">
+                                <span class="text-xs font-bold uppercase text-discord-muted">Povezani Članovi</span>
+                                <div class="w-9 h-9 rounded-xl bg-discord-blurple/20 text-discord-blurple flex items-center justify-center">
+                                    <i class="fa-solid fa-users"></i>
+                                </div>
+                            </div>
+                            <div class="flex items-baseline gap-2">
+                                <h3 id="stat-connected-members" class="text-2xl font-extrabold text-white font-mono">0</h3>
+                                <span class="text-xs text-discord-muted">putem OAuth2</span>
+                            </div>
+                        </div>
+
+                        <div class="bg-discord-sidebar p-5 rounded-2xl border border-white/5">
+                            <div class="flex items-center justify-between mb-3">
+                                <span class="text-xs font-bold uppercase text-discord-muted">Online na Discordu</span>
+                                <div class="w-9 h-9 rounded-xl bg-discord-green/20 text-discord-green flex items-center justify-center">
+                                    <i class="fa-solid fa-signal"></i>
+                                </div>
+                            </div>
+                            <div class="flex items-baseline gap-2">
+                                <h3 id="stat-online-members" class="text-2xl font-extrabold text-white font-mono">0</h3>
+                                <span id="stat-widget-source" class="text-xs text-discord-muted">Widget API</span>
+                            </div>
+                        </div>
+
+                        <div class="bg-discord-sidebar p-5 rounded-2xl border border-white/5">
+                            <div class="flex items-center justify-between mb-3">
+                                <span class="text-xs font-bold uppercase text-discord-muted">Poslana Obavještenja</span>
+                                <div class="w-9 h-9 rounded-xl bg-discord-yellow/20 text-discord-yellow flex items-center justify-center">
+                                    <i class="fa-solid fa-paper-plane"></i>
+                                </div>
+                            </div>
+                            <div class="flex items-baseline gap-2">
+                                <h3 id="stat-announcements-count" class="text-2xl font-extrabold text-white font-mono">0</h3>
+                                <span class="text-xs text-discord-muted">ukupno</span>
+                            </div>
+                        </div>
+
+                        <div class="bg-discord-sidebar p-5 rounded-2xl border border-white/5">
+                            <div class="flex items-center justify-between mb-3">
+                                <span class="text-xs font-bold uppercase text-discord-muted">Aktivne Ankete</span>
+                                <div class="w-9 h-9 rounded-xl bg-purple-500/20 text-purple-400 flex items-center justify-center">
+                                    <i class="fa-solid fa-square-poll-vertical"></i>
+                                </div>
+                            </div>
+                            <div class="flex items-baseline gap-2">
+                                <h3 id="stat-polls-count" class="text-2xl font-extrabold text-white font-mono">0</h3>
+                                <span class="text-xs text-discord-muted">otvorene</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Real Discord Server Live Members & Voice Channels (From Discord Widget API) -->
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <div class="bg-discord-sidebar p-5 rounded-2xl border border-white/5">
+                            <div class="flex items-center justify-between mb-4">
+                                <h3 class="font-bold text-white text-base">Nedavno Povezani Discord Profili</h3>
+                                <button onclick="switchTab('members')" class="text-xs text-discord-blurple hover:underline">Svi članovi →</button>
+                            </div>
+                            <div id="dashboard-members-list">
+                                <!-- Populated dynamically or empty state -->
+                            </div>
+                        </div>
+
+                        <div class="bg-discord-sidebar p-5 rounded-2xl border border-white/5">
+                            <div class="flex items-center justify-between mb-4">
+                                <h3 class="font-bold text-white text-base">Discord Server Live Status (Widget API)</h3>
+                                <span id="widget-guild-badge" class="text-xs font-mono text-discord-muted">Nije povezano</span>
+                            </div>
+                            <div id="dashboard-widget-details">
+                                <!-- Populated from real Discord Widget JSON API -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Recent Announcements List -->
+                    <div class="bg-discord-sidebar p-5 rounded-2xl border border-white/5">
+                        <div class="flex items-center justify-between mb-4">
+                            <h3 class="font-bold text-white text-base">Objavljena Obavještenja</h3>
+                            <span class="text-xs text-discord-muted">Historija slanja</span>
+                        </div>
+                        <div id="dashboard-announcements-list" class="space-y-3">
+                            <!-- Populated by JS -->
+                        </div>
+                    </div>
+                </section>
+
+                <!-- ========================================================= -->
+                <!-- TAB 2: OBAVJEŠTENJA -> REAL DISCORD WEBHOOK               -->
+                <!-- ========================================================= -->
+                <section id="tab-announcements" class="tab-content hidden space-y-6">
+                    <div>
+                        <h1 class="text-2xl font-extrabold text-white">Pošalji Obavještenje u Discord Kanal</h1>
+                        <p class="text-sm text-discord-muted">Poruka se šalje direktno na vaš Discord server putem konfigurisanog Webhook URL-a.</p>
+                    </div>
+
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <form id="announcement-form" onsubmit="publishAnnouncement(event)" class="bg-discord-sidebar p-6 rounded-2xl border border-white/5 space-y-4">
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-xs font-bold uppercase text-discord-muted mb-1.5">Ciljni Kanal / Webhook</label>
+                                    <select id="ann-webhook-target" onchange="updateAnnouncementPreview()" class="w-full bg-discord-darkest border border-white/10 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-discord-blurple">
+                                        <option value="announcements">📢 #obavještenja (Glavni Webhook)</option>
+                                        <option value="welcome">👋 #dobrodošli (Welcome Webhook)</option>
+                                        <option value="logs">🛠️ #admin-logovi (Log Webhook)</option>
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <label class="block text-xs font-bold uppercase text-discord-muted mb-1.5">Ping / Spominjanje</label>
+                                    <select id="ann-mention" onchange="updateAnnouncementPreview()" class="w-full bg-discord-darkest border border-white/10 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-discord-blurple">
+                                        <option value="">Bez pinga</option>
+                                        <option value="@everyone">@everyone (Svi članovi)</option>
+                                        <option value="@here">@here (Online članovi)</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div>
+                                <label class="block text-xs font-bold uppercase text-discord-muted mb-1.5">Naslov Obavještenja *</label>
+                                <input type="text" id="ann-title" required oninput="updateAnnouncementPreview()" placeholder="Unesite naslov obavještenja..."
+                                    class="w-full bg-discord-darkest border border-white/10 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-discord-blurple">
+                            </div>
+
+                            <div>
+                                <label class="block text-xs font-bold uppercase text-discord-muted mb-1.5">Sadržaj Poruke *</label>
+                                <textarea id="ann-body" rows="5" required oninput="updateAnnouncementPreview()" placeholder="Napišite tekst koji će se pojaviti u Discord embed poruci..."
+                                    class="w-full bg-discord-darkest border border-white/10 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-discord-blurple"></textarea>
+                            </div>
+
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-xs font-bold uppercase text-discord-muted mb-1.5">Boja Embed Kartice</label>
+                                    <div class="flex items-center gap-2.5">
+                                        <button type="button" onclick="selectEmbedColor('#5865F2', this)" class="color-swatch w-8 h-8 rounded-full bg-[#5865F2] ring-2 ring-white scale-110 transition"></button>
+                                        <button type="button" onclick="selectEmbedColor('#23a55a', this)" class="color-swatch w-8 h-8 rounded-full bg-[#23a55a] opacity-75 hover:opacity-100 transition"></button>
+                                        <button type="button" onclick="selectEmbedColor('#f0b232', this)" class="color-swatch w-8 h-8 rounded-full bg-[#f0b232] opacity-75 hover:opacity-100 transition"></button>
+                                        <button type="button" onclick="selectEmbedColor('#da373c', this)" class="color-swatch w-8 h-8 rounded-full bg-[#da373c] opacity-75 hover:opacity-100 transition"></button>
+                                    </div>
+                                    <input type="hidden" id="ann-color" value="#5865F2">
+                                </div>
+
+                                <div>
+                                    <label class="block text-xs font-bold uppercase text-discord-muted mb-1.5">URL Slike (Opcionalno)</label>
+                                    <input type="url" id="ann-image" oninput="updateAnnouncementPreview()" placeholder="https://..."
+                                        class="w-full bg-discord-darkest border border-white/10 rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none focus:border-discord-blurple">
+                                </div>
+                            </div>
+
+                            <div class="pt-2">
+                                <button type="submit" id="ann-submit-btn" class="w-full py-3 px-5 bg-discord-blurple hover:bg-discord-blurpleHover text-white font-bold rounded-xl transition flex items-center justify-center gap-2 shadow-lg shadow-discord-blurple/25">
+                                    <i class="fa-brands fa-discord text-lg"></i>
+                                    <span>Pošalji na Discord</span>
+                                </button>
+                            </div>
+                        </form>
+
+                        <!-- Live Embed Preview Box -->
+                        <div class="bg-discord-sidebar p-6 rounded-2xl border border-white/5 flex flex-col justify-between">
+                            <div>
+                                <div class="flex items-center justify-between mb-4">
+                                    <span class="text-xs font-bold uppercase tracking-wider text-discord-muted">Pregled Discord Embeda</span>
+                                    <span id="preview-channel-badge" class="text-xs font-mono bg-discord-darkest px-2.5 py-1 rounded text-discord-text">📢 #obavještenja</span>
+                                </div>
+
+                                <div class="bg-discord-bg p-4 rounded-xl border border-white/5">
+                                    <div class="flex items-start gap-3">
+                                        <div class="w-10 h-10 rounded-full bg-discord-blurple flex items-center justify-center text-white font-bold flex-shrink-0">
+                                            <i class="fa-brands fa-discord"></i>
+                                        </div>
+                                        <div class="flex-1 min-w-0">
+                                            <div class="flex items-center gap-2">
+                                                <span id="preview-bot-name" class="font-bold text-white text-sm">Discord Admin</span>
+                                                <span class="bg-discord-blurple text-white text-[10px] font-bold px-1.5 py-0.2 rounded">APP</span>
+                                            </div>
+                                            
+                                            <p id="preview-mention" class="hidden text-sm mt-1"></p>
+
+                                            <div id="preview-embed-border" class="mt-2 bg-discord-sidebar rounded-r-lg border-l-4 border-[#5865F2] p-3.5 space-y-2">
+                                                <h4 id="preview-title" class="font-bold text-white text-base">Naslov obavještenja</h4>
+                                                <p id="preview-body" class="text-sm text-discord-text whitespace-pre-line leading-relaxed">Tekst obavještenja će biti prikazan ovdje...</p>
+                                                <img id="preview-image" src="" alt="Prilog" class="hidden w-full max-h-48 object-cover rounded-lg mt-2 border border-white/10" onerror="this.classList.add('hidden')">
+                                                <div class="pt-1 text-[11px] text-discord-muted border-t border-white/5">
+                                                    Poslao: <span id="preview-author-name">Eldo</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="mt-4 bg-discord-darkest/70 p-3.5 rounded-xl border border-white/5 text-xs flex items-center justify-between">
+                                <span class="text-discord-muted">Webhook URL status:</span>
+                                <span id="ann-webhook-indicator" class="font-semibold text-discord-yellow">Nije podešeno (Idi na Discord API & Webhook)</span>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- ========================================================= -->
+                <!-- TAB 3: POZDRAVI & DOBRODOŠLICA (REAL USERS ONLY)          -->
+                <!-- ========================================================= -->
+                <section id="tab-greetings" class="tab-content hidden space-y-6">
+                    <div>
+                        <h1 class="text-2xl font-extrabold text-white">Pozdravi & Dobrodošlica Članovima</h1>
+                        <p class="text-sm text-discord-muted">Pošaljite pozdrav stvarnim članovima koji su povezali svoj Discord profil (taguje njihov pravi <code class="text-discord-blurple">&lt;@Discord_ID&gt;</code> na serveru).</p>
+                    </div>
+
+                    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                        <!-- Real Connected Members Awaiting Greeting -->
+                        <div class="lg:col-span-2 bg-discord-sidebar p-5 rounded-2xl border border-white/5 space-y-4">
+                            <div class="flex items-center justify-between">
+                                <h3 class="font-bold text-white text-base">Povezani Članovi za Pozdrav</h3>
+                                <span class="text-xs text-discord-muted font-mono">Welcome Webhook</span>
+                            </div>
+
+                            <div id="new-members-list" class="space-y-3">
+                                <!-- Populated only by real connected Discord users -->
+                            </div>
+                        </div>
+
+                        <!-- Custom Greeting & Auto-Welcome Settings -->
+                        <div class="space-y-6">
+                            <div class="bg-discord-sidebar p-5 rounded-2xl border border-white/5 space-y-3">
+                                <h3 class="font-bold text-white text-base flex items-center gap-2">
+                                    <i class="fa-solid fa-paper-plane text-discord-blurple"></i> Pošalji Pozdrav na Discord
+                                </h3>
+                                <div>
+                                    <label class="block text-xs font-bold uppercase text-discord-muted mb-1">Izaberi Povezanog Člana</label>
+                                    <select id="quick-greet-user" class="w-full bg-discord-darkest border border-white/10 rounded-xl px-3 py-2 text-sm text-white">
+                                        <option value="">Nema povezanih članova</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-bold uppercase text-discord-muted mb-1">Poruka Pozdrava</label>
+                                    <textarea id="quick-greet-msg" rows="3" class="w-full bg-discord-darkest border border-white/10 rounded-xl px-3 py-2 text-sm text-white">Dobrodošao u našu Discord zajednicu! Drago nam je što si tu 👋</textarea>
+                                </div>
+                                <button onclick="sendCustomGreeting()" class="w-full py-2.5 rounded-xl bg-discord-blurple hover:bg-discord-blurpleHover text-white text-xs font-bold transition">
+                                    Pošalji Pozdrav u Discord Kanal
+                                </button>
+                            </div>
+
+                            <!-- Automated Welcome Webhook Template -->
+                            <div class="bg-discord-sidebar p-5 rounded-2xl border border-white/5 space-y-3 admin-only">
+                                <div class="flex items-center justify-between">
+                                    <h3 class="font-bold text-white text-sm">Automatski Welcome Webhook</h3>
+                                    <label class="relative inline-flex items-center cursor-pointer">
+                                        <input type="checkbox" id="auto-welcome-toggle" onchange="saveGeneralSettings()" class="sr-only peer">
+                                        <div class="w-9 h-5 bg-discord-darkest rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-discord-green"></div>
+                                    </label>
+                                </div>
+                                <p class="text-[11px] text-discord-muted">Automatski šalje poruku na Discord kada se novi korisnik prvi put prijavi putem Discorda. Koristi <code class="text-discord-blurple">{user}</code> za pravi tag (<code class="text-discord-blurple">&lt;@id&gt;</code>).</p>
+                                <textarea id="auto-welcome-template" rows="3" onchange="saveGeneralSettings()" class="w-full bg-discord-darkest border border-white/10 rounded-xl px-3 py-2 text-xs text-white">Dobrodošao {user} na naš Discord server! 🎉 Drago nam je što si se povezao sa zajednicom.</textarea>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- ========================================================= -->
+                <!-- TAB 4: POVEZANI ČLANOVI & AKTIVNOST (REAL PROFILES ONLY)  -->
+                <!-- ========================================================= -->
+                <section id="tab-members" class="tab-content hidden space-y-6">
+                    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                        <div>
+                            <h1 class="text-2xl font-extrabold text-white">Povezani Discord Članovi</h1>
+                            <p class="text-sm text-discord-muted">Lista stvarnih korisnika koji su povezali svoj Discord račun putem OAuth2 prijave.</p>
+                        </div>
+
+                        <div class="relative">
+                            <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-discord-muted text-xs"></i>
+                            <input type="text" id="member-search" oninput="renderMembersTable()" placeholder="Pretraži po imenu ili ID-u..."
+                                class="pl-8 pr-3 py-2 bg-discord-sidebar border border-white/10 rounded-xl text-xs text-white focus:outline-none focus:border-discord-blurple">
+                        </div>
+                    </div>
+
+                    <div id="members-table-wrapper" class="bg-discord-sidebar rounded-2xl border border-white/5 overflow-hidden">
+                        <!-- Populated dynamically -->
+                    </div>
+                </section>
+
+                <!-- ========================================================= -->
+                <!-- TAB 5: ANKETE (POLLS)                                     -->
+                <!-- ========================================================= -->
+                <section id="tab-polls" class="tab-content hidden space-y-6">
+                    <div>
+                        <h1 class="text-2xl font-extrabold text-white">Ankete Zajednice</h1>
+                        <p class="text-sm text-discord-muted">Svaki povezani Discord profil može glasati jednom. Rezultati se računaju iz stvarnih glasova.</p>
+                    </div>
+
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <form onsubmit="createPoll(event)" class="admin-only bg-discord-sidebar p-6 rounded-2xl border border-white/5 space-y-4">
+                            <h3 class="font-bold text-white text-base">Kreiraj Novu Anketu</h3>
+                            <div>
+                                <label class="block text-xs font-bold uppercase text-discord-muted mb-1">Pitanje *</label>
+                                <input type="text" id="poll-question" required placeholder="Unesite pitanje ankete..."
+                                    class="w-full bg-discord-darkest border border-white/10 rounded-xl px-3.5 py-2.5 text-sm text-white">
+                            </div>
+                            <div class="space-y-2.5">
+                                <label class="block text-xs font-bold uppercase text-discord-muted">Opcije Odgovora</label>
+                                <input type="text" id="poll-opt-1" required placeholder="Opcija 1" class="w-full bg-discord-darkest border border-white/10 rounded-xl px-3.5 py-2 text-sm text-white">
+                                <input type="text" id="poll-opt-2" required placeholder="Opcija 2" class="w-full bg-discord-darkest border border-white/10 rounded-xl px-3.5 py-2 text-sm text-white">
+                                <input type="text" id="poll-opt-3" placeholder="Opcija 3 (Opcionalno)" class="w-full bg-discord-darkest border border-white/10 rounded-xl px-3.5 py-2 text-sm text-white">
+                            </div>
+                            <label class="flex items-center gap-2 text-xs text-discord-text cursor-pointer">
+                                <input type="checkbox" id="poll-send-discord" checked class="accent-discord-blurple">
+                                <span>Objavi anketu i u Discord kanal putem Webhooka</span>
+                            </label>
+                            <button type="submit" class="w-full py-3 rounded-xl bg-discord-blurple hover:bg-discord-blurpleHover text-white font-bold text-sm transition">
+                                Kreiraj Anketu
+                            </button>
+                        </form>
+
+                        <div class="bg-discord-sidebar p-6 rounded-2xl border border-white/5 space-y-4">
+                            <h3 class="font-bold text-white text-base">Aktivne Ankete</h3>
+                            <div id="active-polls-list" class="space-y-4">
+                                <!-- Populated dynamically -->
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- ========================================================= -->
+                <!-- TAB 6: DISCORD API & WEBHOOK KONFIGURACIJA                -->
+                <!-- ========================================================= -->
+                <section id="tab-settings" class="tab-content hidden space-y-6">
+                    <div>
+                        <h1 class="text-2xl font-extrabold text-white">Discord API & Webhook Konfiguracija</h1>
+                        <p class="text-sm text-discord-muted">Povežite ovaj web portal sa vašom Discord aplikacijom i vašim Discord serverom.</p>
+                    </div>
+
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <!-- 1. Discord OAuth2 Settings -->
+                        <div class="bg-discord-sidebar p-6 rounded-2xl border border-white/5 space-y-4">
+                            <div class="flex items-center gap-2.5">
+                                <div class="w-9 h-9 rounded-xl bg-discord-blurple/20 text-discord-blurple flex items-center justify-center">
+                                    <i class="fa-brands fa-discord"></i>
+                                </div>
+                                <div>
+                                    <h3 class="font-bold text-white text-base">1. Discord OAuth2 Prijava Članova</h3>
+                                    <p class="text-xs text-discord-muted">Omogućava ljudima da se prijave svojim pravim Discord profilom</p>
+                                </div>
+                            </div>
+
+                            <div class="bg-discord-darkest/80 p-3.5 rounded-xl border border-white/5 text-xs text-discord-muted space-y-1.5">
+                                <p class="text-white font-semibold">Uputstvo za Discord Developer Portal:</p>
+                                <p>1. Idite na <code class="text-discord-blurple">discord.com/developers/applications</code> i kreirajte aplikaciju.</p>
+                                <p>2. U sekciji <strong>OAuth2 → Redirects</strong> dodajte tačno ovaj Redirect URI:</p>
+                                <div class="flex items-center gap-2 mt-1">
+                                    <input type="text" id="oauth-redirect-uri-display" readonly class="flex-1 bg-discord-bg border border-white/10 rounded-lg px-2.5 py-1.5 font-mono text-[11px] text-white">
+                                    <button type="button" onclick="copyRedirectUri()" class="px-2.5 py-1.5 rounded-lg bg-discord-blurple text-white text-[11px] font-semibold">Kopiraj</button>
+                                </div>
+                            </div>
+
+                            <div>
+                                <label class="block text-xs font-bold uppercase text-discord-muted mb-1">Discord Application Client ID *</label>
+                                <input type="text" id="cfg-client-id" placeholder="npr. 1294827104829104821"
+                                    class="w-full bg-discord-darkest border border-white/10 rounded-xl px-3.5 py-2.5 text-sm text-white font-mono">
+                            </div>
+
+                            <div>
+                                <label class="block text-xs font-bold uppercase text-discord-muted mb-1">Discord Server (Guild) ID (Za Live Widget)</label>
+                                <input type="text" id="cfg-guild-id" placeholder="npr. 948271048291048291"
+                                    class="w-full bg-discord-darkest border border-white/10 rounded-xl px-3.5 py-2.5 text-sm text-white font-mono">
+                                <p class="text-[11px] text-discord-muted mt-1">Uključite <em>Server Settings → Widget → Enable Server Widget</em> na vašem Discord serveru.</p>
+                            </div>
+                        </div>
+
+                        <!-- 2. Discord Webhooks Settings -->
+                        <div class="bg-discord-sidebar p-6 rounded-2xl border border-white/5 space-y-4">
+                            <div class="flex items-center gap-2.5">
+                                <div class="w-9 h-9 rounded-xl bg-discord-green/20 text-discord-green flex items-center justify-center">
+                                    <i class="fa-solid fa-satellite-dish"></i>
+                                </div>
+                                <div>
+                                    <h3 class="font-bold text-white text-base">2. Discord Webhooks (Slanje u kanale)</h3>
+                                    <p class="text-xs text-discord-muted">Kreirajte Webhook u postavkama željenog kanala na Discordu</p>
+                                </div>
+                            </div>
+
+                            <div>
+                                <label class="block text-xs font-bold uppercase text-discord-muted mb-1">Ime Bota (Prikazano u Discordu)</label>
+                                <input type="text" id="cfg-bot-name" placeholder="Discord Admin"
+                                    class="w-full bg-discord-darkest border border-white/10 rounded-xl px-3.5 py-2 text-sm text-white">
+                            </div>
+
+                            <div>
+                                <label class="block text-xs font-bold uppercase text-discord-muted mb-1">Webhook URL za Obavještenja (#obavještenja) *</label>
+                                <input type="url" id="cfg-webhook-announcements" placeholder="https://discord.com/api/webhooks/..."
+                                    class="w-full bg-discord-darkest border border-white/10 rounded-xl px-3.5 py-2 text-xs text-white font-mono">
+                            </div>
+
+                            <div>
+                                <label class="block text-xs font-bold uppercase text-discord-muted mb-1">Webhook URL za Pozdrave (#dobrodošli)</label>
+                                <input type="url" id="cfg-webhook-welcome" placeholder="https://discord.com/api/webhooks/..."
+                                    class="w-full bg-discord-darkest border border-white/10 rounded-xl px-3.5 py-2 text-xs text-white font-mono">
+                            </div>
+
+                            <div>
+                                <label class="block text-xs font-bold uppercase text-discord-muted mb-1">Webhook URL za Admin Logove (#logovi)</label>
+                                <input type="url" id="cfg-webhook-logs" placeholder="https://discord.com/api/webhooks/..."
+                                    class="w-full bg-discord-darkest border border-white/10 rounded-xl px-3.5 py-2 text-xs text-white font-mono">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Save & Backup Actions -->
+                    <div class="bg-discord-sidebar p-5 rounded-2xl border border-white/5 flex flex-wrap items-center justify-between gap-3">
+                        <div class="flex flex-wrap items-center gap-3">
+                            <button onclick="saveDiscordConfiguration()" class="px-5 py-2.5 rounded-xl bg-discord-green hover:bg-emerald-600 text-white text-xs font-bold transition flex items-center gap-2">
+                                <i class="fa-solid fa-floppy-disk"></i> Sačuvaj Svu Konfiguraciju
+                            </button>
+                            <button onclick="testWebhookDispatch()" class="px-4 py-2.5 rounded-xl bg-discord-blurple hover:bg-discord-blurpleHover text-white text-xs font-bold transition flex items-center gap-2">
+                                <i class="fa-solid fa-paper-plane"></i> Pošalji Test na Discord
+                            </button>
+                        </div>
+
+                        <div class="flex items-center gap-2">
+                            <button onclick="exportPortalData()" class="px-3.5 py-2 rounded-xl bg-discord-darkest hover:bg-discord-hover text-discord-text text-xs font-semibold transition">
+                                <i class="fa-solid fa-download mr-1"></i> Izvezi JSON
+                            </button>
+                            <button onclick="clearAllPortalData()" class="px-3.5 py-2 rounded-xl bg-discord-red/20 hover:bg-discord-red/30 text-discord-red text-xs font-semibold transition">
+                                <i class="fa-solid fa-trash mr-1"></i> Obriši Sve Podatke
+                            </button>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- ========================================================= -->
+                <!-- TAB 7: AUDIT LOG                                          -->
+                <!-- ========================================================= -->
+                <section id="tab-audit" class="tab-content hidden space-y-6">
+                    <div>
+                        <h1 class="text-2xl font-extrabold text-white">Zapisnik Radnji (Audit Log)</h1>
+                        <p class="text-sm text-discord-muted">Hronološki pregled stvarnih akcija u sistemu.</p>
+                    </div>
+                    <div class="bg-discord-sidebar p-5 rounded-2xl border border-white/5">
+                        <div id="audit-log-list" class="space-y-2.5"></div>
+                    </div>
+                </section>
+
+            </main>
+
+            <!-- ============================================================= -->
+            <!-- RIGHT PANEL: DISPATCHED DISCORD WEBHOOKS FEED                 -->
+            <!-- ============================================================= -->
+            <aside class="w-full xl:w-96 bg-discord-sidebar border-t xl:border-t-0 xl:border-l border-white/5 flex flex-col h-[500px] xl:h-screen">
+                <div class="p-3.5 bg-discord-darkest/60 border-b border-white/5 flex items-center justify-between">
+                    <div class="flex items-center gap-2">
+                        <i class="fa-brands fa-discord text-discord-blurple"></i>
+                        <span class="font-bold text-white text-sm">Poslano na Discord</span>
+                    </div>
+                    <span id="dispatched-count-badge" class="text-[11px] font-mono px-2 py-0.5 rounded bg-discord-darkest text-discord-muted">0 poruka</span>
+                </div>
+
+                <div id="discord-dispatched-feed" class="flex-1 p-4 overflow-y-auto space-y-4">
+                    <!-- Only shows real messages dispatched from this portal -->
+                </div>
+            </aside>
+
+        </div>
+    </div>
+
+    <!-- ===================================================================== -->
+    <!-- JAVASCRIPT APPLICATION LOGIC (100% REAL DATA, ZERO MOCK USERS)        -->
+    <!-- ===================================================================== -->
+    <script>
+        const STORAGE_KEY = 'real_discord_portal_v2';
+
+        // Clean initial state with ZERO fake profiles or fake numbers
+        const emptyState = {
+            config: {
+                clientId: '',
+                guildId: '',
+                botName: 'Discord Admin',
+                webhookAnnouncements: '',
+                webhookWelcome: '',
+                webhookLogs: '',
+                autoWelcomeEnabled: true,
+                autoWelcomeTemplate: 'Dobrodošao {user} na naš Discord server! 🎉 Drago nam je što si se povezao sa zajednicom.'
+            },
+            guildInfo: {
+                name: 'Discord Zajednica',
+                onlineCount: 0,
+                instantInvite: '',
+                channels: [],
+                onlineMembers: []
+            },
+            members: [],       // Populated ONLY when real users authenticate via Discord OAuth2
+            announcements: [], // Populated ONLY when admin creates real announcements
+            polls: [],         // Populated ONLY when admin creates real polls
+            dispatchedFeed: [],// Populated ONLY when real webhook messages are sent
+            auditLogs: []
+        };
+
+        let appState = loadState();
+        let currentUser = null; // { id, username, globalName, avatarUrl, role, isAdmin }
+
+        function loadState() {
+            try {
+                const raw = localStorage.getItem(STORAGE_KEY);
+                if (raw) {
+                    const parsed = JSON.parse(raw);
+                    return {
+                        ...emptyState,
+                        ...parsed,
+                        config: { ...emptyState.config, ...(parsed.config || {}) },
+                        guildInfo: { ...emptyState.guildInfo, ...(parsed.guildInfo || {}) }
+                    };
+                }
+            } catch (e) {
+                console.error('Greška pri učitavanju:', e);
+            }
+            return JSON.parse(JSON.stringify(emptyState));
+        }
+
+        function saveState() {
+            try {
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(appState));
+            } catch (e) {
+                console.error('Greška pri čuvanju:', e);
+            }
+        }
+
+        // =====================================================================
+        // INITIALIZATION & DISCORD OAUTH2 CALLBACK HANDLER
+        // =====================================================================
+        window.addEventListener('DOMContentLoaded', async () => {
+            updateAuthScreenStatus();
+
+            // Check if returning from real Discord OAuth2 redirect (#access_token=...)
+            if (window.location.hash && window.location.hash.includes('access_token=')) {
+                await handleDiscordOAuthCallback();
+                return;
+            }
+
+            // Fetch real Discord Widget stats if Guild ID is configured
+            if (appState.config.guildId) {
+                await fetchDiscordWidgetStats(false);
+            }
+        });
+
+        function updateAuthScreenStatus() {
+            document.getElementById('login-connected-count').textContent = appState.members.length;
+            document.getElementById('login-online-count').textContent = appState.guildInfo.onlineCount || 0;
+
+            if (appState.guildInfo.name && appState.guildInfo.name !== 'Discord Zajednica') {
+                document.getElementById('auth-server-title').textContent = appState.guildInfo.name;
+                document.getElementById('auth-card-guild-name').textContent = appState.guildInfo.name;
+            }
+
+            if (appState.config.guildId) {
+                document.getElementById('auth-server-id-badge').textContent = `ID: ${appState.config.guildId}`;
+            }
+
+            const dot = document.getElementById('auth-api-dot');
+            const text = document.getElementById('auth-api-text');
+            if (appState.config.clientId) {
+                dot.className = 'w-2 h-2 rounded-full bg-discord-green live-dot';
+                text.textContent = 'Discord OAuth2: Spreman';
+            } else {
+                dot.className = 'w-2 h-2 rounded-full bg-discord-yellow';
+                text.textContent = 'Discord OAuth2: Čeka Client ID';
+            }
+        }
+
+        // =====================================================================
+        // REAL DISCORD OAUTH2 FLOW (users/@me & users/@me/guilds)
+        // =====================================================================
+        function getRedirectUri() {
+            return window.location.origin + window.location.pathname;
+        }
+
+        function initiateRealDiscordOAuth() {
+            const clientId = appState.config.clientId.trim();
+            if (!clientId) {
+                document.getElementById('oauth-not-configured-alert').classList.remove('hidden');
+                showToast('Admin prvo mora unijeti Discord Application Client ID u postavkama!', 'warning');
+                return;
+            }
+
+            const redirectUri = encodeURIComponent(getRedirectUri());
+            const scope = encodeURIComponent('identify guilds');
+            const authUrl = `https://discord.com/api/oauth2/authorize?client_id=${encodeURIComponent(clientId)}&redirect_uri=${redirectUri}&response_type=token&scope=${scope}`;
+            window.location.href = authUrl;
+        }
+
+        async function handleDiscordOAuthCallback() {
+            const hashParams = new URLSearchParams(window.location.hash.substring(1));
+            const accessToken = hashParams.get('access_token');
+            const tokenType = hashParams.get('token_type') || 'Bearer';
+
+            // Clean URL hash immediately
+            history.replaceState(null, '', window.location.pathname + window.location.search);
+
+            if (!accessToken) return;
+
+            showToast('Povezivanje sa vašim Discord profilom...', 'info');
+
+            try {
+                // Fetch real Discord user profile from official Discord API
+                const userRes = await fetch('https://discord.com/api/users/@me', {
+                    headers: { Authorization: `${tokenType} ${accessToken}` }
+                });
+
+                if (!userRes.ok) {
+                    throw new Error(`Discord API greška (${userRes.status})`);
+                }
+
+                const discordUser = await userRes.json();
+
+                // Fetch user's guilds to verify server membership if Guild ID is set
+                let isInTargetGuild = null;
+                try {
+                    const guildsRes = await fetch('https://discord.com/api/users/@me/guilds', {
+                        headers: { Authorization: `${tokenType} ${accessToken}` }
+                    });
+                    if (guildsRes.ok && appState.config.guildId) {
+                        const guilds = await guildsRes.json();
+                        isInTargetGuild = guilds.some(g => g.id === appState.config.guildId);
+                    }
+                } catch (_) {}
+
+                const avatarUrl = discordUser.avatar
+                    ? `https://cdn.discordapp.com/avatars/${discordUser.id}/${discordUser.avatar}.png?size=128`
+                    : `https://cdn.discordapp.com/embed/avatars/${Number(BigInt(discordUser.id) >> 22n) % 6}.png`;
+
+                const displayName = discordUser.global_name || discordUser.username;
+                const nowIso = new Date().toLocaleString('bs-BA');
+
+                // Check if user already exists in our real connected members list
+                let existingMember = appState.members.find(m => m.id === discordUser.id);
+                const isFirstTimeJoin = !existingMember;
+
+                if (existingMember) {
+                    existingMember.username = discordUser.username;
+                    existingMember.globalName = displayName;
+                    existingMember.avatarUrl = avatarUrl;
+                    existingMember.lastActive = nowIso;
+                    existingMember.loginCount = (existingMember.loginCount || 1) + 1;
+                    if (isInTargetGuild !== null) existingMember.inServer = isInTargetGuild;
+                } else {
+                    existingMember = {
+                        id: discordUser.id,
+                        username: discordUser.username,
+                        globalName: displayName,
+                        avatarUrl: avatarUrl,
+                        role: 'Član',
+                        joinedAt: nowIso,
+                        lastActive: nowIso,
+                        loginCount: 1,
+                        greeted: false,
+                        inServer: isInTargetGuild
+                    };
+                    appState.members.unshift(existingMember);
+                }
+
+                logAudit(`Član ${displayName} (@${discordUser.username}, ID: ${discordUser.id}) se povezao putem Discord OAuth2.`);
+
+                // Automatic Real Discord Webhook Welcome for first-time connected user
+                if (isFirstTimeJoin && appState.config.autoWelcomeEnabled && appState.config.webhookWelcome) {
+                    const welcomeMsg = appState.config.autoWelcomeTemplate
+                        .replace('{user}', `<@${discordUser.id}>`)
+                        .replace('{username}', discordUser.username);
+
+                    await dispatchDiscordWebhook(appState.config.webhookWelcome, {
+                        username: appState.config.botName || 'Discord Admin',
+                        content: welcomeMsg,
+                        embeds: [{
+                            title: '👋 Novi Član Povezan sa Portalom',
+                            description: `Korisnik **${displayName}** (\`@${discordUser.username}\`) je povezao svoj Discord profil!`,
+                            color: 2336090,
+                            thumbnail: { url: avatarUrl },
+                            footer: { text: `Discord ID: ${discordUser.id}` },
+                            timestamp: new Date().toISOString()
+                        }]
+                    }, '#dobrodošli', 'Automatska Dobrodošlica', welcomeMsg);
+                    existingMember.greeted = true;
+                }
+
+                saveState();
+
+                enterApp({
+                    id: discordUser.id,
+                    username: discordUser.username,
+                    globalName: displayName,
+                    avatarUrl: avatarUrl,
+                    role: existingMember.role,
+                    isAdmin: existingMember.role === 'Admin'
+                });
+
+                showToast(`Dobrodošao, ${displayName}! Profil uspješno povezan.`, 'success');
+            } catch (err) {
+                console.error(err);
+                showToast('Neuspjela Discord OAuth2 autentifikacija. Provjerite Client ID i Redirect URI.', 'error');
+            }
+        }
+
+        // =====================================================================
+        // REAL DISCORD SERVER WIDGET API (guilds/{id}/widget.json)
+        // =====================================================================
+        async function fetchDiscordWidgetStats(showFeedback = false) {
+            const guildId = appState.config.guildId.trim();
+            if (!guildId) {
+                if (showFeedback) showToast('Unesite Discord Server ID u postavkama da učitate live podatke.', 'warning');
+                return;
+            }
+
+            try {
+                const res = await fetch(`https://discord.com/api/guilds/${encodeURIComponent(guildId)}/widget.json`);
+                if (!res.ok) {
+                    throw new Error(`HTTP ${res.status} - Provjerite da li je Server Widget uključen na Discordu.`);
+                }
+                const data = await res.json();
+
+                appState.guildInfo = {
+                    name: data.name || 'Discord Server',
+                    onlineCount: data.presence_count || 0,
+                    instantInvite: data.instant_invite || '',
+                    channels: data.channels || [],
+                    onlineMembers: data.members || []
+                };
+
+                saveState();
+                updateAuthScreenStatus();
+                if (currentUser) renderAll();
+                if (showFeedback) showToast(`Učitani stvarni podaci za server: ${data.name} (${data.presence_count} online)!`, 'success');
+            } catch (err) {
+                console.warn('Widget API:', err.message);
+                if (showFeedback) showToast(`Greška pri učitavanju Widgeta: ${err.message}`, 'error');
+            }
+        }
+
+        // =====================================================================
+        // ADMIN LOGIN (eldo / 3ld1n)
+        // =====================================================================
+        function togglePasswordVisibility() {
+            const pwdInput = document.getElementById('login-password');
+            const icon = document.getElementById('pwd-eye-icon');
+            if (pwdInput.type === 'password') {
+                pwdInput.type = 'text';
+                icon.classList.replace('fa-eye', 'fa-eye-slash');
+            } else {
+                pwdInput.type = 'password';
+                icon.classList.replace('fa-eye-slash', 'fa-eye');
+            }
+        }
+
+        function handleAdminLogin(e) {
+            e.preventDefault();
+            const userVal = document.getElementById('login-username').value.trim();
+            const passVal = document.getElementById('login-password').value.trim();
+            const errBox = document.getElementById('login-error');
+
+            if (userVal.toLowerCase() === 'eldo' && passVal === '3ld1n') {
+                errBox.classList.add('hidden');
+                logAudit('Admin Eldo se prijavio u Admin Panel.');
+                enterApp({
+                    id: 'admin-eldo',
+                    username: 'eldo',
+                    globalName: 'Eldo',
+                    avatarUrl: '',
+                    role: 'Glavni Admin',
+                    isAdmin: true
+                });
+                showToast('Prijavljeni ste kao Administrator (Eldo).', 'success');
+            } else {
+                errBox.classList.remove('hidden');
+            }
+        }
+
+        function enterApp(user) {
+            currentUser = user;
+            document.getElementById('auth-screen').classList.add('hidden');
+            document.getElementById('app-shell').classList.remove('hidden');
+
+            document.getElementById('user-display-name').textContent = user.globalName;
+            document.getElementById('user-role-label').textContent = user.role;
+            document.getElementById('welcome-hero-name').textContent = user.globalName;
+            document.getElementById('preview-author-name').textContent = user.globalName;
+
+            const avatarImg = document.getElementById('user-avatar-img');
+            const avatarFallback = document.getElementById('user-avatar-fallback');
+            if (user.avatarUrl) {
+                avatarImg.src = user.avatarUrl;
+                avatarImg.classList.remove('hidden');
+                avatarFallback.classList.add('hidden');
+            } else {
+                avatarImg.classList.add('hidden');
+                avatarFallback.classList.remove('hidden');
+                avatarFallback.textContent = user.globalName.substring(0, 2).toUpperCase();
+            }
+
+            const adminElements = document.querySelectorAll('.admin-only');
+            const memberBanner = document.getElementById('member-view-banner');
+            const mobileBadge = document.getElementById('mobile-role-badge');
+
+            if (user.isAdmin) {
+                adminElements.forEach(el => el.classList.remove('hidden'));
+                memberBanner.classList.add('hidden');
+                mobileBadge.textContent = 'ADMIN';
+            } else {
+                adminElements.forEach(el => el.classList.add('hidden'));
+                memberBanner.classList.remove('hidden');
+                document.getElementById('member-discord-id-banner').textContent = `Discord: @${user.username} • ID: ${user.id}`;
+                mobileBadge.textContent = user.role.toUpperCase();
+            }
+
+            syncConfigInputs();
+            renderAll();
+            switchTab('dashboard');
+        }
+
+        function logout() {
+            currentUser = null;
+            document.getElementById('app-shell').classList.add('hidden');
+            document.getElementById('auth-screen').classList.remove('hidden');
+            document.getElementById('login-password').value = '';
+            updateAuthScreenStatus();
+        }
+
+        // =====================================================================
+        // NAVIGATION
+        // =====================================================================
+        function switchTab(tabId) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+            const target = document.getElementById(`tab-${tabId}`);
+            if (target) target.classList.remove('hidden');
+
+            document.querySelectorAll('.nav-btn').forEach(btn => {
+                if (btn.dataset.tab === tabId) {
+                    btn.classList.add('bg-discord-active', 'text-white');
+                    btn.classList.remove('text-discord-muted');
+                } else {
+                    btn.classList.remove('bg-discord-active', 'text-white');
+                    btn.classList.add('text-discord-muted');
+                }
+            });
+
+            const sidebar = document.getElementById('sidebar');
+            if (!sidebar.classList.contains('-translate-x-full') && window.innerWidth < 1024) {
+                sidebar.classList.add('-translate-x-full');
+            }
+        }
+
+        function toggleMobileSidebar() {
+            document.getElementById('sidebar').classList.toggle('-translate-x-full');
+        }
+
+        // =====================================================================
+        // REAL DISCORD WEBHOOK DISPATCHER
+        // =====================================================================
+        async function dispatchDiscordWebhook(webhookUrl, payload, channelLabel, title, summaryText) {
+            if (!webhookUrl) {
+                showToast('Webhook URL nije podešen! Unesite ga u sekciji Discord API & Webhook.', 'error');
+                return false;
+            }
+
+            try {
+                const response = await fetch(webhookUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                if (response.ok) {
+                    appState.dispatchedFeed.push({
+                        id: Date.now(),
+                        channel: channelLabel,
+                        title: title,
+                        body: summaryText,
+                        sender: payload.username || 'Discord Admin',
+                        time: new Date().toLocaleTimeString('bs-BA', { hour: '2-digit', minute: '2-digit' }),
+                        status: `HTTP ${response.status} Poslano`
+                    });
+                    saveState();
+                    renderDispatchedFeed();
+                    return true;
+                } else {
+                    const errText = await response.text();
+                    showToast(`Discord Webhook greška (${response.status}): ${errText}`, 'error');
+                    return false;
+                }
+            } catch (err) {
+                showToast(`Mrežna greška pri slanju na Discord Webhook: ${err.message}`, 'error');
+                return false;
+            }
+        }
+
+        // =====================================================================
+        // ANNOUNCEMENTS BUILDER
+        // =====================================================================
+        function selectEmbedColor(hex, btn) {
+            document.getElementById('ann-color').value = hex;
+            document.querySelectorAll('.color-swatch').forEach(el => {
+                el.classList.remove('ring-2', 'ring-white', 'scale-110');
+                el.classList.add('opacity-75');
+            });
+            btn.classList.add('ring-2', 'ring-white', 'scale-110');
+            btn.classList.remove('opacity-75');
+            updateAnnouncementPreview();
+        }
+
+        function updateAnnouncementPreview() {
+            const target = document.getElementById('ann-webhook-target').value;
+            const channelMap = {
+                announcements: '📢 #obavještenja',
+                welcome: '👋 #dobrodošli',
+                logs: '🛠️ #admin-logovi'
+            };
+            const mention = document.getElementById('ann-mention').value;
+            const title = document.getElementById('ann-title').value || 'Naslov obavještenja';
+            const body = document.getElementById('ann-body').value || 'Tekst obavještenja će biti prikazan ovdje...';
+            const color = document.getElementById('ann-color').value;
+            const imageUrl = document.getElementById('ann-image').value.trim();
+
+            document.getElementById('preview-channel-badge').textContent = channelMap[target];
+            document.getElementById('preview-bot-name').textContent = appState.config.botName || 'Discord Admin';
+            document.getElementById('preview-title').textContent = title;
+            document.getElementById('preview-body').textContent = body;
+            document.getElementById('preview-embed-border').style.borderColor = color;
+
+            const mentionEl = document.getElementById('preview-mention');
+            if (mention) {
+                mentionEl.innerHTML = `<span class="mention-pill">${mention}</span>`;
+                mentionEl.classList.remove('hidden');
+            } else {
+                mentionEl.classList.add('hidden');
+            }
+
+            const imgEl = document.getElementById('preview-image');
+            if (imageUrl) {
+                imgEl.src = imageUrl;
+                imgEl.classList.remove('hidden');
+            } else {
+                imgEl.classList.add('hidden');
+            }
+        }
+
+        async function publishAnnouncement(e) {
+            e.preventDefault();
+            const targetKey = document.getElementById('ann-webhook-target').value;
+            const webhookMap = {
+                announcements: appState.config.webhookAnnouncements,
+                welcome: appState.config.webhookWelcome || appState.config.webhookAnnouncements,
+                logs: appState.config.webhookLogs || appState.config.webhookAnnouncements
+            };
+            const channelNames = {
+                announcements: '#obavještenja',
+                welcome: '#dobrodošli',
+                logs: '#admin-logovi'
+            };
+
+            const webhookUrl = webhookMap[targetKey];
+            if (!webhookUrl) {
+                showToast('Prvo unesite Webhook URL u sekciji Discord API & Webhook!', 'error');
+                switchTab('settings');
+                return;
+            }
+
+            const mention = document.getElementById('ann-mention').value;
+            const title = document.getElementById('ann-title').value.trim();
+            const body = document.getElementById('ann-body').value.trim();
+            const color = document.getElementById('ann-color').value;
+            const imageUrl = document.getElementById('ann-image').value.trim();
+
+            const btn = document.getElementById('ann-submit-btn');
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> <span>Šaljem na Discord...</span>';
+
+            const payload = {
+                username: appState.config.botName || 'Discord Admin',
+                content: mention || undefined,
+                embeds: [{
+                    title: title,
+                    description: body,
+                    color: parseInt(color.replace('#', ''), 16),
+                    image: imageUrl ? { url: imageUrl } : undefined,
+                    footer: { text: `Objavio: ${currentUser.globalName}` },
+                    timestamp: new Date().toISOString()
+                }]
+            };
+
+            const success = await dispatchDiscordWebhook(webhookUrl, payload, channelNames[targetKey], title, body);
+
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fa-brands fa-discord text-lg"></i> <span>Pošalji na Discord</span>';
+
+            if (success) {
+                appState.announcements.unshift({
+                    id: Date.now(),
+                    channel: channelNames[targetKey],
+                    title,
+                    body,
+                    color,
+                    author: currentUser.globalName,
+                    time: new Date().toLocaleString('bs-BA')
+                });
+                logAudit(`Poslao obavještenje "${title}" na Discord (${channelNames[targetKey]}).`);
+                saveState();
+                renderAll();
+                document.getElementById('announcement-form').reset();
+                updateAnnouncementPreview();
+                showToast('✅ Obavještenje je uspješno poslano na Discord!', 'success');
+            }
+        }
+
+        // =====================================================================
+        // GREETINGS & WELCOME (REAL DISCORD TAG <@ID>)
+        // =====================================================================
+        async function greetRealMember(discordId) {
+            const member = appState.members.find(m => m.id === discordId);
+            if (!member) return;
+
+            const webhookUrl = appState.config.webhookWelcome || appState.config.webhookAnnouncements;
+            if (!webhookUrl) {
+                showToast('Podesite Webhook URL za pozdrave u postavkama!', 'warning');
+                switchTab('settings');
+                return;
+            }
+
+            const messageContent = `Dobrodošao <@${member.id}> u našu zajednicu! 👋 Drago nam je što si povezao svoj Discord profil!`;
+
+            const ok = await dispatchDiscordWebhook(webhookUrl, {
+                username: appState.config.botName || 'Discord Admin',
+                content: messageContent
+            }, '#dobrodošli', `Pozdrav za ${member.globalName}`, messageContent);
+
+            if (ok) {
+                member.greeted = true;
+                logAudit(`Poslao Discord pozdrav članu ${member.globalName} (<@${member.id}>).`);
+                saveState();
+                renderAll();
+                showToast(`Pozdrav poslan za ${member.globalName} na Discord!`, 'success');
+            }
+        }
+
+        async function sendCustomGreeting() {
+            const discordId = document.getElementById('quick-greet-user').value;
+            const text = document.getElementById('quick-greet-msg').value.trim();
+            if (!discordId || !text) {
+                showToast('Izaberite povezanog člana i unesite poruku.', 'warning');
+                return;
+            }
+
+            const member = appState.members.find(m => m.id === discordId);
+            const webhookUrl = appState.config.webhookWelcome || appState.config.webhookAnnouncements;
+            if (!webhookUrl) {
+                showToast('Podesite Webhook URL u postavkama!', 'warning');
+                return;
+            }
+
+            const fullMsg = `<@${discordId}> ${text}`;
+            const ok = await dispatchDiscordWebhook(webhookUrl, {
+                username: appState.config.botName || 'Discord Admin',
+                content: fullMsg
+            }, '#dobrodošli', `Pozdrav za ${member ? member.globalName : discordId}`, fullMsg);
+
+            if (ok) {
+                if (member) member.greeted = true;
+                logAudit(`Poslao prilagođeni pozdrav za <@${discordId}>.`);
+                saveState();
+                renderAll();
+                showToast('Poruka dobrodošlice je poslana na Discord!', 'success');
+            }
+        }
+
+        // =====================================================================
+        // MEMBER MANAGEMENT
+        // =====================================================================
+        function toggleMemberRole(discordId) {
+            const member = appState.members.find(m => m.id === discordId);
+            if (!member) return;
+            const roles = ['Član', 'Moderator', 'Admin'];
+            member.role = roles[(roles.indexOf(member.role) + 1) % roles.length];
+            logAudit(`Promijenio ulogu člana ${member.globalName} u ${member.role}.`);
+            saveState();
+            renderAll();
+            showToast(`Nova uloga za ${member.globalName}: ${member.role}`, 'info');
+        }
+
+        function removeConnectedMember(discordId) {
+            const member = appState.members.find(m => m.id === discordId);
+            if (!member) return;
+            appState.members = appState.members.filter(m => m.id !== discordId);
+            logAudit(`Uklonio člana ${member.globalName} (${discordId}) iz baze portala.`);
+            saveState();
+            renderAll();
+            showToast(`Član ${member.globalName} je uklonjen.`, 'info');
+        }
+
+        // =====================================================================
+        // POLLS SYSTEM (1 VOTE PER REAL DISCORD ID)
+        // =====================================================================
+        async function createPoll(e) {
+            e.preventDefault();
+            const question = document.getElementById('poll-question').value.trim();
+            const o1 = document.getElementById('poll-opt-1').value.trim();
+            const o2 = document.getElementById('poll-opt-2').value.trim();
+            const o3 = document.getElementById('poll-opt-3').value.trim();
+            const sendToDiscord = document.getElementById('poll-send-discord').checked;
+
+            const options = [
+                { text: o1, voters: [] },
+                { text: o2, voters: [] }
+            ];
+            if (o3) options.push({ text: o3, voters: [] });
+
+            const poll = {
+                id: Date.now(),
+                question,
+                options,
+                createdAt: new Date().toLocaleString('bs-BA')
+            };
+
+            appState.polls.unshift(poll);
+            logAudit(`Kreirao anketu: "${question}"`);
+
+            if (sendToDiscord && appState.config.webhookAnnouncements) {
+                await dispatchDiscordWebhook(appState.config.webhookAnnouncements, {
+                    username: appState.config.botName || 'Discord Admin',
+                    embeds: [{
+                        title: `📊 Anketa: ${question}`,
+                        description: options.map((o, i) => `**${i + 1}.** ${o.text}`).join('\n') + '\n\n*Glasajte putem našeg web portala!*',
+                        color: 10181046,
+                        timestamp: new Date().toISOString()
+                    }]
+                }, '#obavještenja', `Anketa: ${question}`, options.map(o => o.text).join(' / '));
+            }
+
+            saveState();
+            renderAll();
+            e.target.reset();
+            showToast('Anketa je kreirana!', 'success');
+        }
+
+        function voteOnPoll(pollId, optionIndex) {
+            if (!currentUser) return;
+            const poll = appState.polls.find(p => p.id === pollId);
+            if (!poll) return;
+
+            // Remove previous vote by this user ID if any
+            poll.options.forEach(opt => {
+                opt.voters = opt.voters.filter(id => id !== currentUser.id);
+            });
+            poll.options[optionIndex].voters.push(currentUser.id);
+
+            saveState();
+            renderPolls();
+            showToast('Vaš glas je zabilježen!', 'success');
+        }
+
+        // =====================================================================
+        // SETTINGS & CONFIGURATION
+        // =====================================================================
+        function syncConfigInputs() {
+            document.getElementById('oauth-redirect-uri-display').value = getRedirectUri();
+            document.getElementById('cfg-client-id').value = appState.config.clientId || '';
+            document.getElementById('cfg-guild-id').value = appState.config.guildId || '';
+            document.getElementById('cfg-bot-name').value = appState.config.botName || 'Discord Admin';
+            document.getElementById('cfg-webhook-announcements').value = appState.config.webhookAnnouncements || '';
+            document.getElementById('cfg-webhook-welcome').value = appState.config.webhookWelcome || '';
+            document.getElementById('cfg-webhook-logs').value = appState.config.webhookLogs || '';
+            document.getElementById('auto-welcome-toggle').checked = appState.config.autoWelcomeEnabled;
+            document.getElementById('auto-welcome-template').value = appState.config.autoWelcomeTemplate;
+
+            updateStatusIndicators();
+        }
+
+        function updateStatusIndicators() {
+            const hasWebhook = Boolean(appState.config.webhookAnnouncements);
+            const hasOAuth = Boolean(appState.config.clientId);
+            const hasWidget = Boolean(appState.config.guildId);
+
+            document.getElementById('sidebar-guild-name').textContent = appState.guildInfo.name || 'Discord Zajednica';
+            document.getElementById('mobile-guild-name').textContent = appState.guildInfo.name || 'Discord Zajednica';
+
+            const sbStatus = document.getElementById('sidebar-webhook-status');
+            const sbDot = document.getElementById('sidebar-status-dot');
+            const annInd = document.getElementById('ann-webhook-indicator');
+
+            if (hasWebhook) {
+                sbStatus.textContent = 'Webhook Povezan';
+                sbDot.className = 'w-2 h-2 rounded-full bg-discord-green live-dot';
+                annInd.textContent = '✅ Spreman za slanje na Discord';
+                annInd.className = 'font-semibold text-discord-green';
+            } else {
+                sbStatus.textContent = 'Webhook nije povezan';
+                sbDot.className = 'w-2 h-2 rounded-full bg-discord-yellow';
+                annInd.textContent = 'Nije podešeno (Idi na Discord API & Webhook)';
+                annInd.className = 'font-semibold text-discord-yellow';
+            }
+
+            // Dashboard checklist badges
+            const cOAuth = document.getElementById('check-oauth-status');
+            cOAuth.textContent = hasOAuth ? '✅ Povezano' : 'Nije uneseno';
+            cOAuth.className = hasOAuth ? 'font-bold text-discord-green' : 'font-bold text-discord-yellow';
+
+            const cWebhook = document.getElementById('check-webhook-status');
+            cWebhook.textContent = hasWebhook ? '✅ Povezano' : 'Nije uneseno';
+            cWebhook.className = hasWebhook ? 'font-bold text-discord-green' : 'font-bold text-discord-yellow';
+
+            const cWidget = document.getElementById('check-widget-status');
+            cWidget.textContent = hasWidget ? '✅ Aktivno' : 'Opcionalno';
+            cWidget.className = hasWidget ? 'font-bold text-discord-green' : 'font-bold text-discord-muted';
+        }
+
+        async function saveDiscordConfiguration() {
+            appState.config.clientId = document.getElementById('cfg-client-id').value.trim();
+            appState.config.guildId = document.getElementById('cfg-guild-id').value.trim();
+            appState.config.botName = document.getElementById('cfg-bot-name').value.trim() || 'Discord Admin';
+            appState.config.webhookAnnouncements = document.getElementById('cfg-webhook-announcements').value.trim();
+            appState.config.webhookWelcome = document.getElementById('cfg-webhook-welcome').value.trim();
+            appState.config.webhookLogs = document.getElementById('cfg-webhook-logs').value.trim();
+
+            saveState();
+            updateStatusIndicators();
+            logAudit('Ažurirao Discord API & Webhook konfiguraciju.');
+            showToast('Konfiguracija je sačuvana!', 'success');
+
+            if (appState.config.guildId) {
+                await fetchDiscordWidgetStats(true);
+            }
+        }
+
+        function saveGeneralSettings() {
+            appState.config.autoWelcomeEnabled = document.getElementById('auto-welcome-toggle').checked;
+            appState.config.autoWelcomeTemplate = document.getElementById('auto-welcome-template').value;
+            saveState();
+            showToast('Postavke dobrodošlice sačuvane.', 'success');
+        }
+
+        async function testWebhookDispatch() {
+            const url = document.getElementById('cfg-webhook-announcements').value.trim() || appState.config.webhookAnnouncements;
+            if (!url) {
+                showToast('Unesite Webhook URL za obavještenja prije testiranja!', 'error');
+                return;
+            }
+            const ok = await dispatchDiscordWebhook(url, {
+                username: document.getElementById('cfg-bot-name').value.trim() || 'Discord Admin',
+                embeds: [{
+                    title: '✅ Test Konekcije Uspješan',
+                    description: 'Vaš Admin Panel je uspješno povezan sa ovim Discord kanalom!',
+                    color: 2336090,
+                    timestamp: new Date().toISOString()
+                }]
+            }, '#obavještenja', 'Test Konekcije', 'Testna poruka poslana na Discord.');
+
+            if (ok) showToast('✅ Test poruka je stigla u vaš Discord kanal!', 'success');
+        }
+
+        function copyRedirectUri() {
+            const input = document.getElementById('oauth-redirect-uri-display');
+            input.select();
+            document.execCommand('copy');
+            showToast('Redirect URI kopiran u međuspremnik!', 'success');
+        }
+
+        function exportPortalData() {
+            const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(appState, null, 2));
+            const a = document.createElement('a');
+            a.href = dataStr;
+            a.download = `discord-portal-backup-${new Date().toISOString().slice(0, 10)}.json`;
+            a.click();
+        }
+
+        function clearAllPortalData() {
+            localStorage.removeItem(STORAGE_KEY);
+            appState = JSON.parse(JSON.stringify(emptyState));
+            syncConfigInputs();
+            renderAll();
+            showToast('Svi podaci su obrisani i vraćeni na 0.', 'info');
+        }
+
+        // =====================================================================
+        // RENDERING FUNCTIONS (WITH CLEAN EMPTY STATES)
+        // =====================================================================
+        function renderAll() {
+            // KPIs
+            document.getElementById('stat-connected-members').textContent = appState.members.length;
+            document.getElementById('sidebar-members-count').textContent = appState.members.length;
+            document.getElementById('stat-online-members').textContent = appState.guildInfo.onlineCount || 0;
+            document.getElementById('stat-announcements-count').textContent = appState.announcements.length;
+            document.getElementById('stat-polls-count').textContent = appState.polls.length;
+
+            const unGreeted = appState.members.filter(m => !m.greeted).length;
+            const badge = document.getElementById('new-members-badge');
+            badge.textContent = unGreeted;
+            badge.classList.toggle('hidden', unGreeted === 0);
+
+            renderDashboardMembers();
+            renderWidgetDetails();
+            renderDashboardAnnouncements();
+            renderGreetingsQueue();
+            renderMembersTable();
+            renderPolls();
+            renderDispatchedFeed();
+            renderAuditLogs();
+        }
+
+        function renderDashboardMembers() {
+            const container = document.getElementById('dashboard-members-list');
+            if (appState.members.length === 0) {
+                container.innerHTML = `
+                    <div class="bg-discord-darkest/60 rounded-xl p-6 text-center border border-white/5">
+                        <i class="fa-brands fa-discord text-3xl text-discord-muted mb-2"></i>
+                        <p class="text-sm font-semibold text-white">Još nema povezanih članova (0)</p>
+                        <p class="text-xs text-discord-muted mt-1">Kada se korisnici prijave putem dugmeta "Prijavi se putem Discorda", njihovi pravi profili će se pojaviti ovdje.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = `<div class="space-y-2.5">` + appState.members.slice(0, 5).map(m => `
+                <div class="bg-discord-darkest/80 p-3 rounded-xl border border-white/5 flex items-center justify-between">
+                    <div class="flex items-center gap-3 min-w-0">
+                        <img src="${m.avatarUrl}" alt="${escapeHtml(m.globalName)}" class="w-9 h-9 rounded-full object-cover">
+                        <div class="min-w-0">
+                            <p class="text-sm font-bold text-white truncate">${escapeHtml(m.globalName)}</p>
+                            <p class="text-[11px] text-discord-muted font-mono truncate">@${escapeHtml(m.username)} • ID: ${m.id}</p>
+                        </div>
+                    </div>
+                    <span class="text-[11px] px-2.5 py-0.5 rounded-full bg-discord-blurple/20 text-discord-blurple font-semibold">${m.role}</span>
+                </div>
+            `).join('') + `</div>`;
+        }
+
+        function renderWidgetDetails() {
+            const container = document.getElementById('dashboard-widget-details');
+            const badge = document.getElementById('widget-guild-badge');
+
+            if (!appState.config.guildId) {
+                badge.textContent = 'Nije povezano';
+                container.innerHTML = `
+                    <div class="bg-discord-darkest/60 rounded-xl p-6 text-center border border-white/5">
+                        <i class="fa-solid fa-server text-2xl text-discord-muted mb-2"></i>
+                        <p class="text-sm font-semibold text-white">Discord Server Widget nije povezan</p>
+                        <p class="text-xs text-discord-muted mt-1">Unesite svoj Discord Server ID u postavkama da prikažete stvarne online članove i voice kanale sa servera.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            badge.textContent = `${appState.guildInfo.onlineCount} online`;
+            const voiceChannels = appState.guildInfo.channels || [];
+            const onlineUsers = appState.guildInfo.onlineMembers || [];
+
+            container.innerHTML = `
+                <div class="space-y-3">
+                    <div class="bg-discord-darkest/80 p-3 rounded-xl border border-white/5 flex items-center justify-between text-xs">
+                        <span class="text-discord-muted">Server: <strong class="text-white">${escapeHtml(appState.guildInfo.name)}</strong></span>
+                        <span class="text-discord-green font-bold">● ${appState.guildInfo.onlineCount} Online</span>
+                    </div>
+                    ${voiceChannels.length > 0 ? `
+                        <div class="space-y-1.5">
+                            <p class="text-[11px] font-bold uppercase text-discord-muted">Aktivni Voice Kanali (${voiceChannels.length})</p>
+                            ${voiceChannels.map(ch => `
+                                <div class="bg-discord-darkest/60 px-3 py-2 rounded-lg text-xs text-white flex items-center gap-2">
+                                    <i class="fa-solid fa-volume-high text-discord-green"></i>
+                                    <span>${escapeHtml(ch.name)}</span>
+                                </div>
+                            `).join('')}
+                        </div>
+                    ` : ''}
+                    ${onlineUsers.length > 0 ? `
+                        <div>
+                            <p class="text-[11px] font-bold uppercase text-discord-muted mb-1.5">Online na Discordu (${onlineUsers.length})</p>
+                            <div class="flex flex-wrap gap-1.5">
+                                ${onlineUsers.slice(0, 12).map(u => `
+                                    <span class="inline-flex items-center gap-1.5 bg-discord-darkest px-2.5 py-1 rounded-full text-[11px] text-discord-text">
+                                        <span class="w-1.5 h-1.5 rounded-full bg-discord-green"></span>
+                                        ${escapeHtml(u.username)}
+                                    </span>
+                                `).join('')}
+                            </div>
+                        </div>
+                    ` : ''}
+                </div>
+            `;
+        }
+
+        function renderDashboardAnnouncements() {
+            const container = document.getElementById('dashboard-announcements-list');
+            if (appState.announcements.length === 0) {
+                container.innerHTML = `<p class="text-xs text-discord-muted text-center py-4">Još nema objavljenih obavještenja.</p>`;
+                return;
+            }
+
+            container.innerHTML = appState.announcements.map(ann => `
+                <div class="bg-discord-darkest/80 p-4 rounded-xl border-l-4" style="border-color: ${ann.color}">
+                    <div class="flex flex-wrap items-center justify-between gap-2 mb-1">
+                        <div class="flex items-center gap-2">
+                            <span class="text-xs font-mono bg-discord-sidebar px-2 py-0.5 rounded text-discord-blurple">${ann.channel}</span>
+                            <h4 class="font-bold text-white text-sm">${escapeHtml(ann.title)}</h4>
+                        </div>
+                        <span class="text-[11px] text-discord-muted">${ann.time}</span>
+                    </div>
+                    <p class="text-xs text-discord-text whitespace-pre-line">${escapeHtml(ann.body)}</p>
+                </div>
+            `).join('');
+        }
+
+        function renderGreetingsQueue() {
+            const container = document.getElementById('new-members-list');
+            const select = document.getElementById('quick-greet-user');
+
+            if (appState.members.length === 0) {
+                select.innerHTML = `<option value="">Nema povezanih članova</option>`;
+                container.innerHTML = `
+                    <div class="bg-discord-darkest/60 rounded-xl p-6 text-center border border-white/5">
+                        <p class="text-sm font-semibold text-white">Nema povezanih članova</p>
+                        <p class="text-xs text-discord-muted mt-1">Čim se neko prijavi putem Discord OAuth2, moći ćete mu poslati pozdrav sa pravim Discord tagom (<code class="text-discord-blurple">&lt;@ID&gt;</code>).</p>
+                    </div>
+                `;
+                return;
+            }
+
+            select.innerHTML = appState.members.map(m => `<option value="${m.id}">${escapeHtml(m.globalName)} (@${escapeHtml(m.username)})</option>`).join('');
+
+            container.innerHTML = appState.members.map(m => `
+                <div class="bg-discord-darkest/80 p-3.5 rounded-xl border border-white/5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div class="flex items-center gap-3">
+                        <img src="${m.avatarUrl}" alt="${escapeHtml(m.globalName)}" class="w-10 h-10 rounded-full object-cover">
+                        <div>
+                            <div class="flex items-center gap-2">
+                                <span class="font-bold text-white text-sm">${escapeHtml(m.globalName)}</span>
+                                <span class="text-xs text-discord-muted font-mono">@${escapeHtml(m.username)}</span>
+                            </div>
+                            <p class="text-[11px] text-discord-muted font-mono">Discord ID: ${m.id} • Povezan: ${m.joinedAt}</p>
+                        </div>
+                    </div>
+                    <div>
+                        <button onclick="greetRealMember('${m.id}')" class="px-3.5 py-2 rounded-xl ${m.greeted ? 'bg-discord-sidebar text-discord-green' : 'bg-discord-blurple hover:bg-discord-blurpleHover text-white'} text-xs font-bold transition flex items-center gap-1.5">
+                            <i class="fa-brands fa-discord"></i>
+                            <span>${m.greeted ? 'Ponovo Pozdravi 👋' : 'Pošalji Pozdrav na Discord 👋'}</span>
+                        </button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function renderMembersTable() {
+            const wrapper = document.getElementById('members-table-wrapper');
+            const query = document.getElementById('member-search').value.toLowerCase();
+
+            const filtered = appState.members.filter(m =>
+                m.globalName.toLowerCase().includes(query) ||
+                m.username.toLowerCase().includes(query) ||
+                m.id.includes(query)
+            );
+
+            if (filtered.length === 0) {
+                wrapper.innerHTML = `
+                    <div class="p-8 text-center">
+                        <p class="text-sm font-semibold text-white">Nema pronađenih povezanih profila</p>
+                        <p class="text-xs text-discord-muted mt-1">Prikazuju se isključivo stvarni korisnici koji su se prijavili putem Discorda.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            wrapper.innerHTML = `
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                            <tr class="bg-discord-darkest/70 border-b border-white/5 text-[11px] uppercase tracking-wider text-discord-muted">
+                                <th class="py-3.5 px-4">Discord Profil</th>
+                                <th class="py-3.5 px-4">Discord ID</th>
+                                <th class="py-3.5 px-4">Uloga</th>
+                                <th class="py-3.5 px-4">Prijave</th>
+                                <th class="py-3.5 px-4">Zadnja Aktivnost</th>
+                                <th class="py-3.5 px-4 text-right">Akcije</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-white/5 text-sm">
+                            ${filtered.map(m => `
+                                <tr class="hover:bg-discord-hover/40 transition">
+                                    <td class="py-3 px-4">
+                                        <div class="flex items-center gap-3">
+                                            <img src="${m.avatarUrl}" alt="${escapeHtml(m.globalName)}" class="w-9 h-9 rounded-full object-cover">
+                                            <div>
+                                                <p class="font-bold text-white text-sm">${escapeHtml(m.globalName)}</p>
+                                                <p class="text-xs text-discord-muted font-mono">@${escapeHtml(m.username)}</p>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td class="py-3 px-4 font-mono text-xs text-discord-muted">${m.id}</td>
+                                    <td class="py-3 px-4">
+                                        <span class="text-[11px] font-bold px-2.5 py-1 rounded-full bg-discord-blurple/20 text-discord-blurple">${m.role}</span>
+                                    </td>
+                                    <td class="py-3 px-4 font-mono text-xs text-white">${m.loginCount || 1}x</td>
+                                    <td class="py-3 px-4 text-xs text-discord-muted">${m.lastActive}</td>
+                                    <td class="py-3 px-4 text-right">
+                                        <div class="inline-flex items-center gap-1.5">
+                                            <button onclick="greetRealMember('${m.id}')" title="Pozdravi na Discordu" class="p-1.5 rounded-lg bg-discord-green/15 text-discord-green hover:bg-discord-green hover:text-white transition text-xs">
+                                                <i class="fa-solid fa-hand"></i>
+                                            </button>
+                                            ${currentUser && currentUser.isAdmin ? `
+                                                <button onclick="toggleMemberRole('${m.id}')" title="Promijeni ulogu" class="p-1.5 rounded-lg bg-discord-blurple/15 text-discord-blurple hover:bg-discord-blurple hover:text-white transition text-xs">
+                                                    <i class="fa-solid fa-user-tag"></i>
+                                                </button>
+                                                <button onclick="removeConnectedMember('${m.id}')" title="Ukloni iz liste" class="p-1.5 rounded-lg bg-discord-red/15 text-discord-red hover:bg-discord-red hover:text-white transition text-xs">
+                                                    <i class="fa-solid fa-trash"></i>
+                                                </button>
+                                            ` : ''}
+                                        </div>
+                                    </td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+        }
+
+        function renderPolls() {
+            const container = document.getElementById('active-polls-list');
+            if (appState.polls.length === 0) {
+                container.innerHTML = `<p class="text-xs text-discord-muted text-center py-6">Trenutno nema aktivnih anketa.</p>`;
+                return;
+            }
+
+            container.innerHTML = appState.polls.map(poll => {
+                const totalVotes = poll.options.reduce((sum, o) => sum + o.voters.length, 0);
+                return `
+                    <div class="bg-discord-darkest/80 p-4 rounded-xl border border-white/5 space-y-3">
+                        <div class="flex justify-between items-start gap-2">
+                            <h4 class="font-bold text-white text-sm">${escapeHtml(poll.question)}</h4>
+                            <span class="text-[11px] font-mono text-discord-muted">${totalVotes} glasova</span>
+                        </div>
+                        <div class="space-y-2">
+                            ${poll.options.map((opt, idx) => {
+                                const pct = totalVotes > 0 ? Math.round((opt.voters.length / totalVotes) * 100) : 0;
+                                const hasVoted = currentUser && opt.voters.includes(currentUser.id);
+                                return `
+                                    <button onclick="voteOnPoll(${poll.id}, ${idx})" class="w-full text-left relative overflow-hidden bg-discord-sidebar hover:bg-discord-hover p-2.5 rounded-lg border ${hasVoted ? 'border-discord-blurple' : 'border-white/5'} transition">
+                                        <div class="absolute inset-y-0 left-0 bg-discord-blurple/25 transition-all" style="width: ${pct}%"></div>
+                                        <div class="relative flex justify-between items-center text-xs">
+                                            <span class="font-medium text-white">${escapeHtml(opt.text)} ${hasVoted ? '✓' : ''}</span>
+                                            <span class="font-mono text-discord-muted">${opt.voters.length} (${pct}%)</span>
+                                        </div>
+                                    </button>
+                                `;
+                            }).join('')}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function renderDispatchedFeed() {
+            const container = document.getElementById('discord-dispatched-feed');
+            document.getElementById('dispatched-count-badge').textContent = `${appState.dispatchedFeed.length} poruka`;
+
+            if (appState.dispatchedFeed.length === 0) {
+                container.innerHTML = `
+                    <div class="h-full flex flex-col items-center justify-center text-center p-4">
+                        <i class="fa-brands fa-discord text-3xl text-discord-muted/50 mb-2"></i>
+                        <p class="text-xs font-semibold text-discord-text">Nema poslanih poruka</p>
+                        <p class="text-[11px] text-discord-muted mt-1">Svako obavještenje ili pozdrav koji pošaljete na vaš Discord server pojavit će se ovdje.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = appState.dispatchedFeed.map(item => `
+                <div class="bg-discord-bg p-3 rounded-xl border border-white/5 space-y-1.5">
+                    <div class="flex items-center justify-between text-[11px]">
+                        <span class="font-mono text-discord-blurple font-semibold">${escapeHtml(item.channel)}</span>
+                        <span class="text-discord-green font-mono">${escapeHtml(item.status)}</span>
+                    </div>
+                    <h5 class="font-bold text-white text-xs">${escapeHtml(item.title)}</h5>
+                    <p class="text-xs text-discord-text whitespace-pre-line">${escapeHtml(item.body)}</p>
+                    <p class="text-[10px] text-discord-muted text-right">${item.time}</p>
+                </div>
+            `).join('');
+
+            container.scrollTop = container.scrollHeight;
+        }
+
+        function renderAuditLogs() {
+            const container = document.getElementById('audit-log-list');
+            if (appState.auditLogs.length === 0) {
+                container.innerHTML = `<p class="text-xs text-discord-muted text-center py-4">Zapisnik je prazan.</p>`;
+                return;
+            }
+
+            container.innerHTML = appState.auditLogs.map(log => `
+                <div class="bg-discord-darkest/70 p-3 rounded-xl border border-white/5 flex items-center justify-between text-xs">
+                    <div class="flex items-center gap-2.5">
+                        <span class="px-2 py-0.5 rounded bg-discord-blurple/20 text-discord-blurple font-bold">${escapeHtml(log.user)}</span>
+                        <span class="text-discord-text">${escapeHtml(log.action)}</span>
+                    </div>
+                    <span class="font-mono text-discord-muted">${log.time}</span>
+                </div>
+            `).join('');
+        }
+
+        function logAudit(actionText) {
+            appState.auditLogs.unshift({
+                time: new Date().toLocaleTimeString('bs-BA', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+                user: currentUser ? currentUser.globalName : 'Sistem',
+                action: actionText
+            });
+            if (appState.auditLogs.length > 50) appState.auditLogs.pop();
+            saveState();
+            if (currentUser) renderAuditLogs();
+        }
+
+        // =====================================================================
+        // HELPERS
+        // =====================================================================
+        function escapeHtml(str) {
+            if (!str) return '';
+            return String(str).replace(/[&<>"']/g, m => ({
+                '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+            }[m]));
+        }
+
+        function showToast(message, type = 'info') {
+            const container = document.getElementById('toast-container');
+            const colors = {
+                success: 'border-discord-green bg-discord-darkest text-white',
+                error: 'border-discord-red bg-discord-darkest text-white',
+                warning: 'border-discord-yellow bg-discord-darkest text-white',
+                info: 'border-discord-blurple bg-discord-darkest text-white'
+            };
+            const icons = {
+                success: 'fa-circle-check text-discord-green',
+                error: 'fa-circle-xmark text-discord-red',
+                warning: 'fa-triangle-exclamation text-discord-yellow',
+                info: 'fa-circle-info text-discord-blurple'
+            };
+
+            const toast = document.createElement('div');
+            toast.className = `toast-enter pointer-events-auto p-3.5 rounded-xl border-l-4 shadow-xl flex items-center gap-3 text-xs font-medium ${colors[type]}`;
+            toast.innerHTML = `<i class="fa-solid ${icons[type]} text-base"></i><span class="flex-1">${escapeHtml(message)}</span>`;
+            container.appendChild(toast);
+
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                toast.style.transform = 'translateX(100%)';
+                toast.style.transition = 'all 0.25s ease';
+                setTimeout(() => toast.remove(), 260);
+            }, 3800);
+        }
+    </script>
+</body>
+</html>
